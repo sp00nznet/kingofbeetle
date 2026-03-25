@@ -52,6 +52,7 @@ if(GAME_SOURCES)
             add_library(${lib_name} STATIC ${BATCH_SOURCES})
             target_include_directories(${lib_name} PRIVATE
                 ${CMAKE_SOURCE_DIR}/src
+                ${CMAKE_SOURCE_DIR}/include
                 ${DCRECOMP_INCLUDE_DIR}
             )
             if(MSVC)
@@ -81,6 +82,7 @@ list(APPEND GAME_SPECIFIC_SOURCES src/deck_window.c)
 add_executable(mushiking ${GAME_SPECIFIC_SOURCES})
 target_include_directories(mushiking PRIVATE
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/include
     ${DCRECOMP_INCLUDE_DIR}
 )
 target_link_libraries(mushiking dcrecomp_core ${GAME_LIBS})

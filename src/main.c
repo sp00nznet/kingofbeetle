@@ -25,6 +25,11 @@
 /* Forward declarations for recompiled game entry points */
 #include "game/game_functions.h"
 
+/* Entry point at 0x8C021000 - in the Naomi cart header region.
+ * This is the first code the BIOS jumps to after loading the ROM.
+ * TODO: recompile this function properly once header region parsing is fixed */
+extern void func_8C021000(SH4CPU *cpu);
+
 /* Indirect dispatch (used by recompiled code) */
 void sh4_call_indirect(SH4CPU *cpu);
 void sh4_jump_indirect(SH4CPU *cpu);
