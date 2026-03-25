@@ -20,10 +20,10 @@
 /* Game binary info */
 #define GAME_TITLE      "Mushiking: King of Beetles"
 #define NAOMI_RAM_SIZE  DC_RAM_SIZE_32MB  /* Naomi has 32MB RAM */
+#define GAME_ENTRY_ADDR 0x8C020000        /* Naomi load address */
 
 /* Forward declarations for recompiled game entry points */
-/* These will be populated once we disassemble the ROM */
-// extern void func_8C010000(SH4CPU *cpu);
+#include "game/game_functions.h"
 
 /* Indirect dispatch (used by recompiled code) */
 void sh4_call_indirect(SH4CPU *cpu);
@@ -49,8 +49,8 @@ static int load_game_binary(SH4CPU *cpu, const char *path) {
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    /* Load at standard Naomi/DC load address */
-    uint32_t load_offset = GAME_LOAD_ADDR & cpu->ram_mask;
+    /* Load at Naomi game address */
+    uint32_t load_offset = GAME_ENTRY_ADDR & cpu->ram_mask;
 
     if (load_offset + size > cpu->ram_size) {
         fprintf(stderr, "ERROR: Binary too large (%ld bytes) for RAM\n", size);
@@ -140,19 +140,19 @@ int main(int argc, char *argv[]) {
     /* Set up BIOS state */
     naomi_bios_init(&g_cpu);
 
-    /* TODO: Set PC to game entry point (discovered during disassembly)
-     * For now, use the standard load address.
-     * After disassembly, update this to the actual init function. */
-    g_cpu.pc = GAME_LOAD_ADDR;
+    /* Set PC to game entry point (from Naomi cart header at offset 0x420) */
+    g_cpu.pc = 0x8C021000;
 
     printf("[BOOT] Entry point: 0x%08X\n", g_cpu.pc);
     printf("[BOOT] Starting game loop...\n\n");
 
+    /* Call the game initialization function */
+    func_8C021000(&g_cpu);
+
     /* Main game loop */
     while (g_cpu.running && platform_poll_events(g_hw)) {
-        /* TODO: Call the recompiled game entry function here
-         * Example: func_8C010000(&g_cpu);
-         * The exact entry point will be known after disassembly. */
+        /* The game's main loop runs inside the recompiled code.
+         * If we reach here, the init function returned. */
 
         /* Update deck window (card selection UI) */
         deck_window_update(g_naomi_io);
