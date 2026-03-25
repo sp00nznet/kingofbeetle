@@ -7,18 +7,20 @@ Static recompilation of **Mushiking: The King of Beetles** (Sega Naomi arcade, 2
 | Milestone | Status |
 |-----------|--------|
 | ROM decryption (M4 / 317-0437-com) | Done |
-| ROM extraction (ISO9660 filesystem) | Done |
-| SH-4 disassembly | Done (21,792 functions) |
-| Static recompilation to C | Done (26,004 functions, 53 files) |
+| ROM extraction (ISO9660 filesystem) | Done (88 dirs, 96MB assets) |
+| SH-4 disassembly | Done (21,792 functions detected) |
+| Static recompilation to C | Done (26,004 functions, 53 files, 185MB source) |
 | Stub generation | Done (12,710 stubs) |
-| First build (MSVC) | Done |
+| First build (MSVC x64) | Done |
 | Headless execution | Done (300 frames, clean shutdown) |
-| SDL2 + OpenGL rendering | Not started |
-| Entry point recompilation | Not started |
-| JVS I/O / input mapping | Stubbed |
-| Card reader emulation | Stubbed (24 beetles in database) |
-| Deck window (card selection UI) | Stubbed |
-| Sound (AICA) | Not started |
+| SDL2 + OpenGL window | Done (640x480, OpenGL 3.3 on RTX 5070) |
+| Entry point traced | Done (bootstrap→func_8C165F74) |
+| Flycast HW backend | In progress (subsystems extracted, adapter API defined) |
+| PVR2 rendering via Flycast | Next up |
+| AICA sound via Flycast | Not started |
+| JVS I/O / input mapping | Stubbed (Flycast JVS protocol available) |
+| Card reader emulation | Stubbed (Flycast has barcodeInit() for Mushiking) |
+| Deck window (card selection UI) | Stubbed (keyboard fallback working) |
 
 ## Game Info
 
@@ -27,8 +29,10 @@ Static recompilation of **Mushiking: The King of Beetles** (Sega Naomi arcade, 2
 - **Regions**: JPN / USA / EXP / KOR / AUS (multi-region ROM)
 - **ROM Version**: 4E (VER2.000)
 - **Encryption**: Naomi M4 board, security chip 317-0437-com
-- **Entry Point**: 0x8C021000
+- **Entry Point**: 0x8C021000 (bootstrap) → func_8C165F74 (game init)
+- **Load Address**: 0x8C020000 (Naomi, vs DC's 0x8C010000)
 - **Code Size**: ~1.9MB across two regions (main + test mode)
+- **Decryption Keys**: subkey1=0xC093, subkey2=0xA378
 
 ## Architecture
 
@@ -102,7 +106,13 @@ Caucasus, Hercules, Hercules Blue, Giraffe Stag, Grandis Stag, Five-Horned, Atla
 git clone --recursive https://github.com/sp00nznet/kingofbeetle.git
 cd kingofbeetle
 mkdir build && cd build
+
+# Headless (no SDL2 required):
 cmake ..
+cmake --build . --config Release -j 8
+
+# With graphics (requires vcpkg with SDL2 + GLEW):
+cmake .. -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
 cmake --build . --config Release -j 8
 ```
 
