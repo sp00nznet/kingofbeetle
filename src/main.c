@@ -25,10 +25,14 @@
 /* Forward declarations for recompiled game entry points */
 #include "game/game_functions.h"
 
-/* Entry point at 0x8C021000 - in the Naomi cart header region.
- * This is the first code the BIOS jumps to after loading the ROM.
- * TODO: recompile this function properly once header region parsing is fixed */
-extern void func_8C021000(SH4CPU *cpu);
+/* The ROM entry point at 0x8C021000 is BIOS-level init code that:
+ * 1. Writes to hardware regs (PVR soft reset, cache control)
+ * 2. Sets SR=0x700000F0 (supervisor mode, interrupts masked)
+ * 3. Sets VBR=0x8C00F400 (vector base register)
+ * 4. Sets R15=0xAC00FC00 (stack pointer, uncached)
+ * 5. Sets FPSCR=0x00040000 (DN mode)
+ * 6. Calls func_8C165F74 (the actual game init function)
+ * We replicate this setup in naomi_bios_init() and call the game directly. */
 
 /* Indirect dispatch (used by recompiled code) */
 void sh4_call_indirect(SH4CPU *cpu);
@@ -54,8 +58,10 @@ static int load_game_binary(SH4CPU *cpu, const char *path) {
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    /* Load at Naomi game address */
+    /* Load at Naomi game address (0x8C020000) */
     uint32_t load_offset = GAME_ENTRY_ADDR & cpu->ram_mask;
+    printf("[BOOT] Loading at RAM offset 0x%08X (addr 0x%08X)\n",
+           load_offset, GAME_ENTRY_ADDR);
 
     if (load_offset + size > cpu->ram_size) {
         fprintf(stderr, "ERROR: Binary too large (%ld bytes) for RAM\n", size);
@@ -66,7 +72,7 @@ static int load_game_binary(SH4CPU *cpu, const char *path) {
     size_t read = fread(cpu->ram + load_offset, 1, size, f);
     fclose(f);
 
-    printf("[BOOT] Loaded %s: %zu bytes at 0x%08X\n", path, read, GAME_LOAD_ADDR);
+    printf("[BOOT] Loaded %s: %zu bytes at 0x%08X\n", path, read, GAME_ENTRY_ADDR);
     return 0;
 }
 
@@ -82,12 +88,22 @@ static void naomi_bios_init(SH4CPU *cpu) {
         *(uint32_t *)(cpu->ram + addr) = 0x41474553; /* "SEGA" */
     }
 
-    /* Set up initial CPU state */
-    cpu->r[15] = 0x8C00FC00;  /* Stack pointer */
-    cpu->vbr = 0x8C00F400;    /* Vector base */
-    cpu->sr = 0x700000F0;     /* Supervisor mode, interrupts masked */
+    /* Replicate the bootstrap at 0x8C021000:
+     * - Sets SR to supervisor mode with interrupts masked
+     * - Sets VBR to exception vector base
+     * - Sets stack pointer (uncached mirror)
+     * - Sets FPSCR for denormalized number handling
+     * - Initializes cache control registers */
+    cpu->sr = 0x700000F0;       /* MD=1, RB=1, BL=1, IMASK=0xF */
+    cpu->vbr = 0x8C00F400;      /* Vector Base Register */
+    cpu->r[15] = 0x8C00FC00;    /* Stack pointer (cached mirror) */
+    cpu->fpscr = 0x00040001;    /* DN=1, RM=nearest */
+    cpu->gbr = 0;
+    cpu->pr = 0;                /* No return address (top-level) */
 
     printf("[BOOT] Naomi BIOS state initialized\n");
+    printf("[BOOT]   SR=0x%08X VBR=0x%08X SP=0x%08X FPSCR=0x%08X\n",
+           cpu->sr, cpu->vbr, cpu->r[15], cpu->fpscr);
 }
 
 int main(int argc, char *argv[]) {
@@ -145,20 +161,23 @@ int main(int argc, char *argv[]) {
     /* Set up BIOS state */
     naomi_bios_init(&g_cpu);
 
-    /* Set PC to game entry point (from Naomi cart header at offset 0x420) */
-    g_cpu.pc = 0x8C021000;
+    /* The game's actual init function, called by the ROM's bootstrap code.
+     * This is at 0x8C165F74 - discovered by tracing the entry point at 0x8C021000. */
+    g_cpu.pc = 0x8C165F74;
 
-    printf("[BOOT] Entry point: 0x%08X\n", g_cpu.pc);
-    printf("[BOOT] Starting game loop...\n\n");
+    printf("[BOOT] Game init function: func_8C165F74\n");
+    printf("[BOOT] Starting game...\n\n");
 
-    /* Call the game initialization function */
-    func_8C021000(&g_cpu);
+    /* Call the game initialization function.
+     * On the real hardware, this is called by the BIOS bootstrap at 0x8C021000
+     * after setting up SR, VBR, SP, and FPSCR. We already did that in naomi_bios_init(). */
+    func_8C165F74(&g_cpu);
 
-    /* Main game loop */
+    printf("[BOOT] Game init returned, entering main loop\n");
+
+    /* Main game loop - the game init may have set up its own frame loop,
+     * or it may return and expect us to drive the loop. */
     while (g_cpu.running && platform_poll_events(g_hw)) {
-        /* The game's main loop runs inside the recompiled code.
-         * If we reach here, the init function returned. */
-
         /* Update deck window (card selection UI) */
         deck_window_update(g_naomi_io);
 
