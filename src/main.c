@@ -161,18 +161,30 @@ int main(int argc, char *argv[]) {
     /* Set up BIOS state */
     naomi_bios_init(&g_cpu);
 
-    /* The game's actual init function, called by the ROM's bootstrap code.
-     * This is at 0x8C165F74 - discovered by tracing the entry point at 0x8C021000. */
-    g_cpu.pc = 0x8C165F74;
+    /* The bootstrap at 0x8C021000 does:
+     * 1. Cache control init (CCR at 0xFF00001C)
+     * 2. Set SR, SP=0xAC00F400, VBR=0x8C00F400, FPSCR=0x00040000
+     * 3. Fill 0x8C00C000-0x8C1C6124 with "SEGA" pattern
+     * 4. Clear BSS regions (RAM is already zero from calloc)
+     * 5. Call func_8C0898A0 = the real game main
+     * We replicate steps 1-4 in naomi_bios_init() and call the game directly. */
+    g_cpu.pc = 0x8C0898A0;
 
-    printf("[BOOT] Game init function: func_8C165F74\n");
+    printf("[BOOT] Game main function: func_8C0898A0\n");
     printf("[BOOT] Starting game...\n\n");
 
-    /* Call the game initialization function.
-     * On the real hardware, this is called by the BIOS bootstrap at 0x8C021000
-     * after setting up SR, VBR, SP, and FPSCR. We already did that in naomi_bios_init(). */
-    func_8C165F74(&g_cpu);
+    func_8C0898A0(&g_cpu);
 
+    /* Debug: check allocator vtable state */
+    {
+        uint8_t *ram = sh4_get_ram_ptr();
+        uint32_t vtable_ptr = *(uint32_t *)(ram + (0x8C2FB7A4 - 0x8C000000));
+        printf("[DBG] Allocator vtable ptr @0x8C2FB7A4 = 0x%08X\n", vtable_ptr);
+        if (vtable_ptr != 0 && vtable_ptr != 0xFFFFFFFF) {
+            uint32_t fn_ptr = *(uint32_t *)(ram + ((vtable_ptr & 0x1FFFFFFF) - 0x0C000000));
+            printf("[DBG] vtable[0] = 0x%08X\n", fn_ptr);
+        }
+    }
     printf("[BOOT] Game init returned, entering main loop\n");
 
     /* Main game loop - the game init may have set up its own frame loop,
@@ -201,29 +213,4 @@ cleanup:
     return 0;
 }
 
-/* ========== Indirect Dispatch ========== */
-
-/* These are called by recompiled code when a JSR/JMP target
- * is computed at runtime (indirect call/jump). They look up
- * the target address in the dispatch table and call the
- * corresponding recompiled function. */
-
-void sh4_call_indirect(SH4CPU *cpu) {
-    /* TODO: Implement dispatch table lookup after recompilation
-     * For now, log and return */
-    static int log_count = 0;
-    if (log_count < 20) {
-        log_count++;
-        printf("[DISPATCH] indirect call to 0x%08X (pr=0x%08X)\n",
-               cpu->pc, cpu->pr);
-    }
-}
-
-void sh4_jump_indirect(SH4CPU *cpu) {
-    static int log_count = 0;
-    if (log_count < 20) {
-        log_count++;
-        printf("[DISPATCH] indirect jump to 0x%08X\n", cpu->pc);
-    }
-    cpu->running = false;  /* Stop for now until dispatch table is ready */
-}
+/* sh4_call_indirect / sh4_jump_indirect are implemented in dispatch_table.c */

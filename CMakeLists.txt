@@ -30,6 +30,7 @@ file(GLOB GAME_SOURCES src/game/game_code_*.c)
 if(GAME_SOURCES)
     list(APPEND GAME_SOURCES src/game/dispatch_table.c)
     list(APPEND GAME_SOURCES src/game/game_stubs.c)
+    list(APPEND GAME_SOURCES src/game/mid_function_entries.c)
 
     # Split into batches for parallel compilation
     set(GAME_LIBS)
