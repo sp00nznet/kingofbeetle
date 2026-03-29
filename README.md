@@ -16,27 +16,38 @@ Static recompilation of **Mushiking: The King of Beetles** (Sega Naomi arcade, 2
 | Entry point traced | Done (bootstrap 0x8C021000 → func_8C0898A0) |
 | Maple DMA / JVS protocol | Done (MIE device info, reset, I/O commands) |
 | SPG scanline timing | Done (VBlank simulation for game timing loops) |
+| TMU hardware timers | Done (TCNT0/1/2 real-time countdown) |
+| SH-4 division routines | Done (DIV0U/DIV1 replaced with C division) |
 | Memory allocator | Done (vtable dispatch, first-fit allocator) |
-| Mid-function entry points | Done (8 entries extracted from dead code) |
-| Game init completion | Done (init returns without crashes) |
-| PVR2 rendering output | In progress (TA receives no geometry yet) |
-| Flycast HW backend | Partially extracted (adapter API defined) |
+| Mid-function entry points | Done (26 entries extracted from dead code) |
+| Game init completion | Done (0 unresolved calls, 6 heap allocations) |
+| Game main loop | **Running at 60fps** |
+| PVR2 rendering output | In progress (PVR not yet configured) |
 | AICA sound | Not started |
-| Card reader emulation | Stubbed (Flycast has barcodeInit() for Mushiking) |
+| Card reader emulation | Stubbed |
 | Deck window (card selection UI) | Stubbed (keyboard fallback working) |
 
 ## Current State
 
-The game boots through the full Naomi initialization sequence:
-1. SH-4 CPU state setup (SR, VBR, SP, FPSCR)
-2. Maple bus scan (MIE/JVS device enumeration on 4 buses)
-3. SPG timing synchronization (VBlank polling)
-4. Heap allocator initialization (vtable-dispatched first-fit allocator)
-5. Game init function returns to main loop
+**The game runs its main loop at a stable 60fps** in an SDL2/OpenGL window. Each frame calls the game's frame processing function (func_8C1657AC) and render function (func_8C091AD4). The SDL window is responsive and handles input events.
 
-The allocator and dispatch table handle 26,012 function entries including 8 manually-extracted mid-function entry points (addresses inside recompiled functions that are called indirectly via vtables and constructor tables).
+The rendering pipeline is not yet producing visible output because the PVR2 hardware registers haven't been configured by the game's initialization code. Several mid-function entry points in the PVR init path are stubbed, preventing the Tile Accelerator and framebuffer from being set up.
 
-**Next milestone**: Getting geometry data into the PVR2 Tile Accelerator for first rendered frame.
+### What works:
+- Full Naomi initialization sequence (BIOS state, Maple/JVS, timers, allocator)
+- 26,030-entry dispatch table with binary search (26,004 recompiled + 26 manual entries)
+- Vtable-dispatched heap allocator (first-fit, 6 successful allocations totaling ~600KB)
+- TMU hardware timer countdown for frame timing
+- C replacements for SH-4 software division routines (DIV0U/DIV1)
+- Maple DMA with MIE/JVS protocol (device enumeration, I/O commands)
+- SPG scanline counter for VBlank timing
+- Game main loop with SDL event integration at 60fps
+
+### What's next:
+- Configure PVR2 registers (framebuffer, video mode, TA parameters) so the game can submit geometry
+- Implement remaining mid-function entries for PVR initialization
+- Enable Store Queue → TA FIFO path for geometry submission
+- First rendered frame
 
 ## Game Info
 
@@ -47,7 +58,6 @@ The allocator and dispatch table handle 26,012 function entries including 8 manu
 - **Encryption**: Naomi M4 board, security chip 317-0437-com
 - **Entry Point**: 0x8C021000 (bootstrap) → func_8C0898A0 (game main)
 - **Load Address**: 0x8C020000 (Naomi, vs DC's 0x8C010000)
-- **Code Size**: ~1.9MB across two regions (main + test mode)
 - **Decryption Keys**: subkey1=0xC093, subkey2=0xA378
 
 ## Architecture
@@ -63,39 +73,26 @@ kingofbeetle/
 │       ├── game_code_000.c .. game_code_052.c  (26,004 functions)
 │       ├── dispatch_table.c                     (indirect call lookup)
 │       ├── game_stubs.c                         (12,710 stubs)
-│       └── mid_function_entries.c               (8 manually-extracted entries)
+│       └── mid_function_entries.c               (26 manually-extracted entries)
 ├── include/game/
 │   └── game_functions.h   # 38,714 function declarations
-├── data/
-│   ├── extracted/         # ROM-extracted assets (88 directories)
-│   │   ├── CAUCASUS/      # Beetle 3D models (.NJ/.NJM)
-│   │   ├── HERCULES/
-│   │   ├── GIRAFFA/
-│   │   └── ...
-│   └── cards/             # Card data files (for deck window)
-└── tools/
-    └── extract_cards.py   # Card data extractor (TODO)
+└── data/
+    └── extracted/         # ROM-extracted assets (88 directories)
 ```
 
 ## Key Technical Discoveries
 
-### Bootstrap Chain
-The Naomi ROM entry point at 0x8C021000 is data-interleaved bootstrap code that the recompiler couldn't handle. Manually traced:
-`0x8C021000 → 0x8C0210E8 → JMP 0x8C021150 → fill BIOS "SEGA" → clear BSS → JSR func_8C0898A0 → halt`
+### Mid-Function Entry Points
+The recompiler creates dead code after `return` statements when a function has multiple entry points (common in SH-4 with JMP/BSR patterns). 26 addresses needed manual extraction into standalone callable wrappers, including the memory allocator, division routines, and game loop entry.
 
 ### Allocator Vtable
-The game uses a vtable-dispatched memory allocator at `[0x8C2FB7A4]` pointing to ROM address 0x8C1733A4:
-- vtable[0] = 0x8C0220EE (alloc - first-fit from free list)
-- vtable[1] = 0x8C0221BC (free list insert)
-- vtable[2] = 0x8C02241C (resize)
-- vtable[3] = 0x8C022274 (query)
+The game uses a vtable-dispatched memory allocator at `[0x8C2FB7A4]` → ROM vtable at 0x8C1733A4 with function pointers for alloc/free/resize. The vtable data is protected from corruption by the game's BIOS fill pattern.
 
-Both vtable entries are mid-function addresses (dead code after `return` in recompiled C). The alloc function was manually extracted (~60 lines) from the dead code section.
+### SH-4 Division
+The recompiler didn't handle DIV0U (0x0019) and DIV1 (0x3204) instructions, emitting them as `/* UNKNOWN */` comments. The software divide routines were replaced with C implementations using native integer division.
 
-### Maple/JVS Protocol
-Naomi uses Maple bus for JVS I/O board communication. Implemented MIE commands:
-- 0x01 Device Info, 0x03 Reset, 0x82 JVS Get ID ("315-6149 SEGA")
-- 0x80 Firmware Upload, 0x84 Self Test, 0x86 JVS I/O Commands
+### Game Loop Architecture
+The game's main loop (at 0x8C089A5C, dead code inside func_8C089A34) calls frame processing and render functions, then dispatches callbacks via a task system. The loop continuation functions (at 0x8C089B92/B98) are tail calls back to the loop entry.
 
 ## Building
 
@@ -106,10 +103,6 @@ Naomi uses Maple bus for JVS I/O board communication. Implemented MIE commands:
 git clone --recursive https://github.com/sp00nznet/kingofbeetle.git
 cd kingofbeetle
 mkdir build && cd build
-
-# Headless (no SDL2 required):
-cmake ..
-cmake --build . --config Release -j 8
 
 # With graphics (requires vcpkg with SDL2 + GLEW):
 cmake .. -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
