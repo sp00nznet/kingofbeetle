@@ -57,7 +57,7 @@ if(GAME_SOURCES)
                 ${DCRECOMP_INCLUDE_DIR}
             )
             if(MSVC)
-                target_compile_options(${lib_name} PRIVATE /O1)
+                target_compile_options(${lib_name} PRIVATE /O1 /Zi)
             endif()
             list(APPEND GAME_LIBS ${lib_name})
         endif()
