@@ -171,6 +171,21 @@ int main(int argc, char *argv[]) {
     g_cpu.pc = 0x8C0898A0;
 
     printf("[BOOT] Game main function: func_8C0898A0\n");
+    /* VBlank handler at 0x8C0367EC.
+     *
+     * The Naomi variant of the same Katana idiom Crazy Taxi and ChuChu Rocket
+     * use: masks interrupts, walks a per-frame callback table, increments a
+     * frame counter and acks SB_ISTNRM. Unlike theirs it has its own prologue
+     * (r14/r13/r12/r11 then pr), so it can be called directly rather than
+     * having the pushes reproduced here.
+     *
+     * On hardware it is reached through VBR+0x600, via a trampoline copied into
+     * low RAM at boot that the recompiler never sees. Without this registered
+     * the game runs entirely on polled VBlank and its state machines never
+     * advance.
+     */
+    sh4_set_irq_handler(func_8C0367EC);
+
     printf("[BOOT] Starting game...\n\n");
 
     func_8C0898A0(&g_cpu);
