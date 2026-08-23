@@ -6,6 +6,7 @@
  */
 
 #include "recompiler/sh4_cpu.h"
+#include "recompiler/sh4_task.h"
 #include "hal/dc_hardware.h"
 #include "hal/naomi_io.h"
 #include "hal/pvr2.h"
@@ -188,7 +189,32 @@ int main(int argc, char *argv[]) {
 
     printf("[BOOT] Starting game...\n\n");
 
-    func_8C0898A0(&g_cpu);
+    /* Run the game on its own stack.
+     *
+     * func_8C16D770 is the SDK's task yield: a driver starts an operation then
+     * suspends so the rest of the system can drive it to completion. As a plain
+     * C call that cannot work - the wait loop in func_8C024426 has no way to be
+     * satisfied. On a fiber the yield means what it means on hardware, and this
+     * loop is what it yields to.
+     */
+    sh4_task_init();
+    SH4Task *game = sh4_task_spawn(func_8C0898A0, &g_cpu);
+
+    unsigned long long yields = 0;
+    while (game && !sh4_task_finished(game)) {
+        sh4_task_resume(game);
+        if (sh4_task_finished(game))
+            break;
+        yields++;
+        /* What the task suspended for: let a frame of hardware happen. */
+        dc_pvr_wait_vblank(g_hw);
+        if (!platform_poll_events(g_hw))
+            break;
+        if ((yields % 600) == 0)
+            printf("[TASK] %llu yields serviced\n", yields);
+    }
+    sh4_task_destroy(game);
+    printf("[TASK] game task ended after %llu yields\n", yields);
 
     /* Debug: check allocator vtable state */
     {
