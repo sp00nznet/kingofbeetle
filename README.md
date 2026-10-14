@@ -96,6 +96,13 @@ The game's main loop (at 0x8C089A5C, dead code inside func_8C089A34) calls frame
 
 ## Building
 
+The recompiled C (`src/game/`, `include/game/`) is not in this repo and never
+will be: it is generated on your machine from your own ROM by dcrecomp's
+tools (decrypt, extract, disassemble, recompile, stubs; see "Running the
+tools" in [dcrecomp's README](https://github.com/sp00nznet/dcrecomp#running-the-tools)),
+and both folders are gitignored. Generate it before building: `src/main.c`
+needs `include/game/game_functions.h`.
+
 **Requirements**: CMake 3.16+, C11 compiler (MSVC/GCC/Clang)
 **Optional**: SDL2, OpenGL 3.3 + GLEW (for graphical output)
 
@@ -116,4 +123,5 @@ ROM files are not included. You need:
 
 ## License
 
-Private repository.
+MIT: see [LICENSE](LICENSE). It covers the code in this repo; no ROM,
+BIOS or code generated from them is distributed.
