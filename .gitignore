@@ -1,3 +1,14 @@
 *.zip
 data/extracted/
 build/
+
+# Recompiled from your own ROM by dcrecomp's tools: made locally, never
+# committed (REPO_RULES section 3)
+src/game/
+include/game/
+
+# ROMs, BIOS images and anything extracted from them
+*.bin
+*.ic[0-9]*
+data/
+build*/
